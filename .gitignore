@@ -35,3 +35,6 @@ ehthumbs.db
 # Run folders (Minecraft test server)
 run/
 /run/
+
+# Kotlin
+.kotlin/
