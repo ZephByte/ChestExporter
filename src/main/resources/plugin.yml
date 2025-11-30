@@ -1,0 +1,9 @@
+name: ChestExporter
+version: '1.0-SNAPSHOT'
+main: org.zephbyte.chestExporter.ChestExporter
+api-version: '1.21'
+commands:
+  exportchest:
+    description: Exports the contents of a chest to a /setblock command.
+    usage: /exportchest
+    permission: chestexporter.use
