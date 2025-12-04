@@ -1,7 +1,7 @@
 package org.zephbyte.chestExporter
 
 import org.bukkit.Material
-import org.bukkit.block.Chest
+import org.bukkit.block.Container
 
 object CommandGenerator {
     data class GenerationResult(
@@ -10,17 +10,12 @@ object CommandGenerator {
         val backported: List<Pair<String, Int>>
     )
 
-    fun generateSingleChestCommand(chest: Chest): GenerationResult {
-        val block = chest.block
-        val blockData = block.blockData as? org.bukkit.block.data.type.Chest
-            ?: return GenerationResult("", listOf(Pair("Error: Not a valid chest block", 0)), listOf())
+    fun generateContainerCommand(container: Container): GenerationResult {
+        val block = container.block
+        val blockData = block.blockData
+        val blockStateStr = blockData.asString.replaceFirst("minecraft:", "")
 
-        val facing = blockData.facing.name.lowercase()
-        val type = blockData.type.name.lowercase()
-
-        val blockStateStr = "minecraft:chest[facing=$facing,type=$type]"
-
-        val inv = chest.blockInventory
+        val inv = container.inventory
         val ignoredItems = mutableListOf<Pair<String, Int>>()
         val backportedItems = mutableListOf<Pair<String, Int>>()
 

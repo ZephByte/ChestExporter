@@ -6,6 +6,7 @@ import net.md_5.bungee.api.chat.HoverEvent
 import net.md_5.bungee.api.chat.TextComponent
 import org.bukkit.ChatColor
 import org.bukkit.block.Chest
+import org.bukkit.block.Container
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
@@ -26,24 +27,24 @@ class ChestExporterCommand : CommandExecutor {
 
         val block = sender.getTargetBlockExact(10)
 
-        if (block == null || block.state !is Chest) {
-            sender.sendMessage("${ChatColor.RED}You must be looking at a Chest.")
+        if (block == null || block.state !is Container) {
+            sender.sendMessage("${ChatColor.RED}You must be looking at a container.")
             return true
         }
 
-        val chestState = block.state as Chest
-        val inventory = chestState.inventory
+        val containerState = block.state as Container
+        val inventory = containerState.inventory
 
         sender.sendMessage("${ChatColor.YELLOW}Export Successful!")
 
-        if (inventory is DoubleChestInventory) {
+        if (containerState is Chest && inventory is DoubleChestInventory) {
             sender.sendMessage("${ChatColor.AQUA}Double chest detected. Generating two commands.")
 
             val leftChest = inventory.leftSide.holder as Chest
             val rightChest = inventory.rightSide.holder as Chest
 
-            val leftResult = CommandGenerator.generateSingleChestCommand(leftChest)
-            val rightResult = CommandGenerator.generateSingleChestCommand(rightChest)
+            val leftResult = CommandGenerator.generateContainerCommand(leftChest)
+            val rightResult = CommandGenerator.generateContainerCommand(rightChest)
 
             sendCopyableMessage(sender, leftResult.command, "Click to Copy Left Half Command")
             sendCopyableMessage(sender, rightResult.command, "Click to Copy Right Half Command")
@@ -56,7 +57,7 @@ class ChestExporterCommand : CommandExecutor {
             reportResults(sender, combinedResult)
 
         } else {
-            val result = CommandGenerator.generateSingleChestCommand(chestState)
+            val result = CommandGenerator.generateContainerCommand(containerState)
             sendCopyableMessage(sender, result.command)
             reportResults(sender, result)
         }
