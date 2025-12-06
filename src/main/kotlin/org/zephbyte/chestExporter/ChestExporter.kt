@@ -1,33 +1,27 @@
 package org.zephbyte.chestExporter
 
 import org.bukkit.plugin.java.JavaPlugin
-import java.util.logging.Logger
+import org.zephbyte.chestExporter.command.CommandManager
 
 /**
  * Main class for the ChestExporter plugin.
- * Initializes the plugin and registers the command executor.
  */
 class ChestExporter : JavaPlugin() {
-    private lateinit var configManager: ConfigManager
+    lateinit var configManager: ConfigManager
+        private set
 
     companion object {
-        /**
-         * The logger for the plugin, accessible from anywhere.
-         */
         lateinit var instance: ChestExporter
             private set
     }
 
     override fun onEnable() {
         instance = this
-        // Initialize the ConfigManager
         configManager = ConfigManager(dataFolder)
 
-        // Register the command executor and tab completer
-        val commandExecutor = ChestExporterCommand(configManager)
-        getCommand("chestexporter")?.setExecutor(commandExecutor)
-        getCommand("chestexporter")?.setTabCompleter(commandExecutor)
-
+        val commandManager = CommandManager()
+        getCommand("chestexporter")?.setExecutor(commandManager)
+        getCommand("chestexporter")?.setTabCompleter(commandManager)
 
         logger.info("ChestExporter has been enabled!")
     }
