@@ -12,25 +12,36 @@ import org.zephbyte.chestExporter.util.NbtConverter
 import kotlin.math.roundToInt
 
 /**
- * A stateless service for generating Minecraft commands.
+ * A stateless service that handles the logic of generating Minecraft commands from in-game objects.
+ * This class is responsible for serializing entities and containers into the appropriate
+ * NBT format for legacy commands.
+ *
+ * @param configManager The configuration manager, used to access the item override map.
  */
 class CommandGenerator(private val configManager: ConfigManager) {
 
     /**
-     * Internal result for building item NBT.
+     * Internal result for building item NBT, used to track outcomes.
      */
     private data class ItemNbtResult(
         val nbt: String,
-        val backportedId: String? = null,
-        val ignoredId: String? = null
+        val backportedId: String? = null
     )
 
+    /**
+     * Converts a single ItemStack into its core NBT data string.
+     * This is the central method for item serialization, handling item ID overrides and
+     * choosing the correct NBT format (quoted vs. unquoted ID).
+     *
+     * @param item The ItemStack to process.
+     * @param quoteId Whether the final item ID should be wrapped in quotes (for entity NBT).
+     * @return An [ItemNbtResult] containing the final NBT, or null if the item should be ignored.
+     */
     private fun buildItemNbt(item: ItemStack, quoteId: Boolean): ItemNbtResult? {
         val overrideMap = configManager.getOverrideMap()
         val idKey = "minecraft:${item.type.name.lowercase()}"
         var finalId = idKey
         var backported: String? = null
-        var ignored: String? = null
 
         if (overrideMap.containsKey(idKey)) {
             val overrideId = overrideMap[idKey]
@@ -38,7 +49,7 @@ class CommandGenerator(private val configManager: ConfigManager) {
                 backported = overrideId
                 finalId = overrideId
             } else {
-                ignored = idKey
+                // Item is explicitly ignored in the config
                 return null
             }
         }
@@ -50,9 +61,16 @@ class CommandGenerator(private val configManager: ConfigManager) {
         val tagString = if (tag.isNotEmpty()) ",tag:{$tag}" else ""
         val nbt = "id:$idString,Count:${item.amount}b$tagString"
 
-        return ItemNbtResult(nbt, backported, ignored)
+        return ItemNbtResult(nbt, backported)
     }
 
+    /**
+     * Generates a `/setblock` command for a container.
+     *
+     * @param container The container state to generate the command for.
+     * @param inventory The specific inventory to serialize.
+     * @return A [GenerationResult] containing the command and result lists.
+     */
     fun generateContainerCommand(container: Container, inventory: Inventory): GenerationResult {
         val ignoredItems = mutableListOf<Pair<String, Int>>()
         val backportedItems = mutableListOf<Pair<String, Int>>()
@@ -82,13 +100,19 @@ class CommandGenerator(private val configManager: ConfigManager) {
         return GenerationResult(command, ignoredItems, backportedItems)
     }
 
+    /**
+     * Generates a `/summon` command for an armor stand.
+     *
+     * @param armorStand The armor stand entity to generate the command for.
+     * @return A [GenerationResult] containing the command and result lists.
+     */
     fun generateArmorStandCommand(armorStand: ArmorStand): GenerationResult {
         val ignoredItems = mutableListOf<Pair<String, Int>>()
         val backportedItems = mutableListOf<Pair<String, Int>>()
         val nbtParts = mutableListOf<String>()
 
         if (armorStand.isSmall) nbtParts.add("Small:1b")
-        //if (!armorStand.isBasePlateVisible) nbtParts.add("NoBasePlate:1b")
+        if (!armorStand.hasBasePlate()) nbtParts.add("NoBasePlate:1b")
         if (armorStand.hasArms()) nbtParts.add("ShowArms:1b")
         if (!armorStand.hasGravity()) nbtParts.add("NoGravity:1b")
         if (armorStand.isInvisible) nbtParts.add("Invisible:1b")
@@ -155,6 +179,12 @@ class CommandGenerator(private val configManager: ConfigManager) {
         return GenerationResult(command, ignoredItems, backportedItems)
     }
 
+    /**
+     * Generates a `/setblock` command to place a chest with the player's inventory.
+     *
+     * @param player The player whose inventory is being exported.
+     * @return A [GenerationResult] containing the command and result lists.
+     */
     fun generatePlayerInventoryCommand(player: Player): GenerationResult {
         val ignoredItems = mutableListOf<Pair<String, Int>>()
         val backportedItems = mutableListOf<Pair<String, Int>>()
@@ -182,6 +212,12 @@ class CommandGenerator(private val configManager: ConfigManager) {
         return GenerationResult(command, ignoredItems, backportedItems)
     }
 
+    /**
+     * Generates a `/summon` command for an armor stand wearing a player's equipment.
+     *
+     * @param player The player whose equipment is being exported.
+     * @return A [GenerationResult], or null if the player has no equipment.
+     */
     fun generatePlayerArmorCommand(player: Player): GenerationResult? {
         val ignoredItems = mutableListOf<Pair<String, Int>>()
         val backportedItems = mutableListOf<Pair<String, Int>>()

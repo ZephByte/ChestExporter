@@ -11,7 +11,10 @@ import org.zephbyte.chestExporter.command.subcommand.InvSubCommand
 import org.zephbyte.chestExporter.command.subcommand.ReloadSubCommand
 
 /**
- * Manages the /chestexporter command and its subcommands.
+ * The main command handler for the plugin.
+ * This class is responsible for parsing incoming commands and delegating them
+ * to the appropriate [SubCommand] implementation. It also handles top-level
+ * tab completion.
  */
 class CommandManager : CommandExecutor, TabCompleter {
     private val subcommands = listOf(
@@ -52,7 +55,6 @@ class CommandManager : CommandExecutor, TabCompleter {
             )
         }
 
-        // Delegate to subcommand's tab completion if it exists
         val subCommand = subcommands[args[0].lowercase()]
         if (subCommand is TabCompleter) {
             return subCommand.onTabComplete(sender, command, alias, args.sliceArray(1 until args.size))
