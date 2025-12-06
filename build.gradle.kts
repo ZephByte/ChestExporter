@@ -12,11 +12,13 @@ repositories {
     maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/") {
         name = "spigotmc-repo"
     }
+    maven("https://repo.spongepowered.org/maven")
 }
 
 dependencies {
     compileOnly("org.spigotmc:spigot-api:1.21.8-R0.1-SNAPSHOT")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    implementation("com.electronwill.night-config:toml:3.6.6")
 }
 
 tasks {

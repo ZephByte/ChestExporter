@@ -8,7 +8,25 @@ import org.bukkit.inventory.meta.Damageable
 import org.bukkit.inventory.meta.EnchantmentStorageMeta
 import org.bukkit.inventory.meta.PotionMeta
 
+/**
+ * A utility object for converting modern ItemStack metadata into the legacy NBT format.
+ * This is used to preserve item data when exporting to older versions of Minecraft.
+ */
 object NbtConverter {
+    /**
+     * Converts the metadata of an [ItemStack] into a legacy NBT string.
+     *
+     * This function handles various metadata types, including:
+     * - Display Name (including color codes)
+     * - Lore (including color codes)
+     * - Enchantments (for both items and enchanted books)
+     * - Durability/Damage
+     * - Unbreakable status
+     * - Potion effects (both base and custom)
+     *
+     * @param item The [ItemStack] to convert.
+     * @return A string containing the legacy NBT representation of the item's metadata.
+     */
     @Suppress("DEPRECATION")
     fun convertMetaToLegacyNbt(item: ItemStack): String {
         if (!item.hasItemMeta()) return ""
@@ -105,6 +123,12 @@ object NbtConverter {
         return tagParts.joinToString(",")
     }
 
+    /**
+     * Escapes single quotes in a string for use in NBT.
+     *
+     * @param json The string to escape.
+     * @return The escaped string.
+     */
     private fun escapeNbtString(json: String): String {
         return json.replace("'", "\\'")
     }
