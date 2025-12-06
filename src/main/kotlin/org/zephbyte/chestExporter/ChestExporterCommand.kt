@@ -4,6 +4,7 @@ import net.md_5.bungee.api.chat.ClickEvent
 import net.md_5.bungee.api.chat.ComponentBuilder
 import net.md_5.bungee.api.chat.HoverEvent
 import net.md_5.bungee.api.chat.TextComponent
+import org.bukkit.Bukkit
 import org.bukkit.ChatColor
 import org.bukkit.block.Chest
 import org.bukkit.block.Container
@@ -11,30 +12,32 @@ import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 import org.bukkit.command.TabCompleter
+import org.bukkit.entity.ArmorStand
+import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import org.bukkit.inventory.DoubleChestInventory
 import org.bukkit.util.StringUtil
 
 /**
- * Handles the /chestexporter command, which allows players to export the contents of a container
- * as a /setblock command for a legacy Minecraft version. Also handles tab completion.
+ * Handles the /chestexporter command and its subcommands.
  *
  * @param configManager The configuration manager for the plugin.
  */
 class ChestExporterCommand(private val configManager: ConfigManager) : CommandExecutor, TabCompleter {
 
-    private val subcommands = listOf("export", "reload")
+    private val subcommands = listOf("export", "reload", "inv")
 
     /**
      * Executes the /chestexporter command.
      */
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
-        if (args.isEmpty() || args[0].equals("export", ignoreCase = true)) {
-            handleExport(sender)
-        } else if (args[0].equals("reload", ignoreCase = true)) {
-            handleReload(sender)
-        } else {
-            sender.sendMessage("${ChatColor.RED}Unknown subcommand. Usage: /chestexporter <export|reload>")
+        val subCommand = if (args.isEmpty()) "export" else args[0]
+
+        when (subCommand.lowercase()) {
+            "export" -> handleExport(sender)
+            "reload" -> handleReload(sender)
+            "inv" -> handleInventoryExport(sender, args.getOrNull(1))
+            else -> sender.sendMessage("${ChatColor.RED}Unknown subcommand. Usage: /${label} <export|reload|inv>")
         }
         return true
     }
@@ -48,17 +51,32 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
         alias: String,
         args: Array<out String>
     ): List<String> {
-        if (args.size == 1) {
-            // Filter subcommands based on what the user has typed so far
-            return StringUtil.copyPartialMatches(args[0], subcommands, mutableListOf())
+        return when (args.size) {
+            1 -> StringUtil.copyPartialMatches(args[0], subcommands, mutableListOf())
+            2 -> {
+                if (args[0].equals("inv", ignoreCase = true) && sender.hasPermission("chestexporter.inv.other")) {
+                    StringUtil.copyPartialMatches(
+                        args[1],
+                        Bukkit.getOnlinePlayers().map { it.name },
+                        mutableListOf()
+                    )
+                } else {
+                    emptyList()
+                }
+            }
+            else -> emptyList()
         }
-        // No other arguments are expected, so return an empty list
-        return emptyList()
     }
 
-    /**
-     * Handles the "export" subcommand.
-     */
+    private fun getTargetEntity(player: Player, maxDistance: Double): Entity? {
+        val result = player.world.rayTraceEntities(
+            player.eyeLocation,
+            player.eyeLocation.direction,
+            maxDistance
+        ) { entity -> entity is ArmorStand }
+        return result?.hitEntity
+    }
+
     private fun handleExport(sender: CommandSender) {
         if (sender !is Player) {
             sender.sendMessage("${ChatColor.RED}The 'export' subcommand can only be run by a player.")
@@ -70,18 +88,73 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
             return
         }
 
-        val block = sender.getTargetBlockExact(10)
+        val commandGenerator = CommandGenerator(configManager)
+        val targetedBlock = sender.getTargetBlockExact(10)
+        val targetedEntity = getTargetEntity(sender, 10.0)
 
-        if (block == null || block.state !is Container) {
-            sender.sendMessage("${ChatColor.RED}You must be looking at a container.")
-            return
+        when {
+            targetedBlock?.state is Container -> {
+                val containerState = targetedBlock.state as Container
+                handleContainerExport(sender, containerState, commandGenerator)
+            }
+            targetedEntity is ArmorStand -> {
+                handleArmorStandExport(sender, targetedEntity, commandGenerator)
+            }
+            else -> {
+                sender.sendMessage("${ChatColor.RED}You must be looking at a container or an armor stand.")
+            }
+        }
+    }
+
+    private fun handleInventoryExport(sender: CommandSender, targetPlayerName: String?) {
+        val targetPlayer: Player?
+
+        if (targetPlayerName == null) {
+            if (sender !is Player) {
+                sender.sendMessage("${ChatColor.RED}You must specify a player name when running from the console.")
+                return
+            }
+            if (!sender.hasPermission("chestexporter.inv")) {
+                sender.sendMessage("${ChatColor.RED}You do not have permission to export your own inventory.")
+                return
+            }
+            targetPlayer = sender
+        } else {
+            if (!sender.hasPermission("chestexporter.inv.other")) {
+                sender.sendMessage("${ChatColor.RED}You do not have permission to export other players' inventories.")
+                return
+            }
+            targetPlayer = Bukkit.getPlayerExact(targetPlayerName)
+            if (targetPlayer == null) {
+                sender.sendMessage("${ChatColor.RED}Player '$targetPlayerName' not found.")
+                return
+            }
         }
 
-        val containerState = block.state as Container
-        val inventory = containerState.inventory
         val commandGenerator = CommandGenerator(configManager)
+        sender.sendMessage("${ChatColor.YELLOW}Exporting inventory for ${targetPlayer.name}...")
 
-        sender.sendMessage("${ChatColor.YELLOW}Export Successful!")
+        // Generate inventory command
+        val invResult = commandGenerator.generatePlayerInventoryCommand(targetPlayer)
+        sendCopyableMessage(sender, invResult.command, "[Click to Copy ${targetPlayer.name}'s Inventory Command]")
+
+        // Generate armor command
+        val armorResult = commandGenerator.generatePlayerArmorCommand(targetPlayer)
+        if (armorResult != null) {
+            sendCopyableMessage(sender, armorResult.command, "[Click to Copy ${targetPlayer.name}'s Armor Command]")
+        }
+
+        // Combine and report results
+        val combinedIgnored = invResult.ignored + (armorResult?.ignored ?: emptyList())
+        val combinedBackported = invResult.backported + (armorResult?.backported ?: emptyList())
+        val finalResult = CommandGenerator.GenerationResult("", combinedIgnored, combinedBackported)
+
+        reportResults(sender as? Player, finalResult)
+    }
+
+    private fun handleContainerExport(sender: Player, containerState: Container, commandGenerator: CommandGenerator) {
+        val inventory = containerState.inventory
+        sender.sendMessage("${ChatColor.YELLOW}Container export successful!")
 
         if (containerState is Chest && inventory is DoubleChestInventory) {
             sender.sendMessage("${ChatColor.AQUA}Double chest detected. Generating two commands.")
@@ -96,7 +169,7 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
             sendCopyableMessage(sender, rightResult.command, "Click to Copy Right Half Command")
 
             val combinedResult = CommandGenerator.GenerationResult(
-                "", // Not used
+                "",
                 leftResult.ignored + rightResult.ignored,
                 leftResult.backported + rightResult.backported
             )
@@ -104,14 +177,18 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
 
         } else {
             val result = commandGenerator.generateContainerCommand(containerState, inventory)
-            sendCopyableMessage(sender, result.command)
+            sendCopyableMessage(sender, result.command, "[Click to Copy Container Command]")
             reportResults(sender, result)
         }
     }
 
-    /**
-     * Handles the "reload" subcommand.
-     */
+    private fun handleArmorStandExport(sender: Player, armorStand: ArmorStand, commandGenerator: CommandGenerator) {
+        sender.sendMessage("${ChatColor.YELLOW}Armor stand export successful!")
+        val result = commandGenerator.generateArmorStandCommand(armorStand)
+        sendCopyableMessage(sender, result.command, "[Click to Copy Armor Stand Command]")
+        reportResults(sender, result)
+    }
+
     private fun handleReload(sender: CommandSender) {
         if (!sender.hasPermission("chestexporter.reload")) {
             sender.sendMessage("${ChatColor.RED}You do not have permission to use this command.")
@@ -121,13 +198,9 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
         sender.sendMessage("${ChatColor.GREEN}ChestExporter configuration reloaded.")
     }
 
-    /**
-     * Reports the results of the command generation to the player, including backported and ignored items.
-     *
-     * @param sender The player who executed the command.
-     * @param result The result of the command generation.
-     */
-    private fun reportResults(sender: Player, result: CommandGenerator.GenerationResult) {
+    private fun reportResults(sender: Player?, result: CommandGenerator.GenerationResult) {
+        if (sender == null) return // Cannot send messages to console sender in this context
+
         if (result.backported.isNotEmpty()) {
             val backportedMsg = result.backported.joinToString(",\n") { (id, amount) -> "$id x$amount" }
             sender.sendMessage("${ChatColor.AQUA}Backported: \n$backportedMsg")
@@ -138,19 +211,16 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
         }
     }
 
-    /**
-     * Sends a copyable message to the player's chat.
-     *
-     * @param player The player to send the message to.
-     * @param text The text to be copied when the message is clicked.
-     * @param title The title of the message.
-     */
-    private fun sendCopyableMessage(player: Player, text: String, title: String = "[Click to Copy 1.20 Command]") {
+    private fun sendCopyableMessage(sender: CommandSender, text: String, title: String) {
+        if (sender !is Player) {
+            sender.sendMessage("Generated Command: $text")
+            return
+        }
         val message = TextComponent(title)
         message.color = net.md_5.bungee.api.ChatColor.GREEN
         message.clickEvent = ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, text)
         message.hoverEvent =
             HoverEvent(HoverEvent.Action.SHOW_TEXT, ComponentBuilder("Click to copy command to clipboard").create())
-        player.spigot().sendMessage(message)
+        sender.spigot().sendMessage(message)
     }
 }
