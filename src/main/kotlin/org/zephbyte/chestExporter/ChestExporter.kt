@@ -23,8 +23,11 @@ class ChestExporter : JavaPlugin() {
         // Initialize the ConfigManager
         configManager = ConfigManager(dataFolder)
 
-        // Register the command executor, passing the ConfigManager
-        getCommand("exportchest")?.setExecutor(ChestExporterCommand(configManager))
+        // Register the command executor and tab completer
+        val commandExecutor = ChestExporterCommand(configManager)
+        getCommand("chestexporter")?.setExecutor(commandExecutor)
+        getCommand("chestexporter")?.setTabCompleter(commandExecutor)
+
 
         logger.info("ChestExporter has been enabled!")
     }

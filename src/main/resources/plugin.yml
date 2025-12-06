@@ -3,7 +3,14 @@ version: '1.0-SNAPSHOT'
 main: org.zephbyte.chestExporter.ChestExporter
 api-version: '1.21'
 commands:
-  exportchest:
+  chestexporter:
     description: Exports the contents of a chest to a /setblock command.
-    usage: /exportchest
-    permission: chestexporter.use
+    usage: /chestexporter <export|reload>
+    aliases: [exportchest, ce]
+permissions:
+  chestexporter.use:
+    description: Allows players to use the /chestexporter export command.
+    default: op
+  chestexporter.reload:
+    description: Allows players to use the /chestexporter reload command.
+    default: op

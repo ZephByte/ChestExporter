@@ -10,36 +10,71 @@ import org.bukkit.block.Container
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
+import org.bukkit.command.TabCompleter
 import org.bukkit.entity.Player
 import org.bukkit.inventory.DoubleChestInventory
+import org.bukkit.util.StringUtil
 
 /**
- * Handles the /exportchest command, which allows players to export the contents of a container
- * as a /setblock command for a legacy Minecraft version.
+ * Handles the /chestexporter command, which allows players to export the contents of a container
+ * as a /setblock command for a legacy Minecraft version. Also handles tab completion.
  *
  * @param configManager The configuration manager for the plugin.
  */
-class ChestExporterCommand(private val configManager: ConfigManager) : CommandExecutor {
+class ChestExporterCommand(private val configManager: ConfigManager) : CommandExecutor, TabCompleter {
+
+    private val subcommands = listOf("export", "reload")
 
     /**
-     * Executes the /exportchest command.
+     * Executes the /chestexporter command.
      */
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
+        if (args.isEmpty() || args[0].equals("export", ignoreCase = true)) {
+            handleExport(sender)
+        } else if (args[0].equals("reload", ignoreCase = true)) {
+            handleReload(sender)
+        } else {
+            sender.sendMessage("${ChatColor.RED}Unknown subcommand. Usage: /chestexporter <export|reload>")
+        }
+        return true
+    }
+
+    /**
+     * Handles tab completion for the /chestexporter command.
+     */
+    override fun onTabComplete(
+        sender: CommandSender,
+        command: Command,
+        alias: String,
+        args: Array<out String>
+    ): List<String> {
+        if (args.size == 1) {
+            // Filter subcommands based on what the user has typed so far
+            return StringUtil.copyPartialMatches(args[0], subcommands, mutableListOf())
+        }
+        // No other arguments are expected, so return an empty list
+        return emptyList()
+    }
+
+    /**
+     * Handles the "export" subcommand.
+     */
+    private fun handleExport(sender: CommandSender) {
         if (sender !is Player) {
-            sender.sendMessage("${ChatColor.RED}This command can only be run by a player.")
-            return true
+            sender.sendMessage("${ChatColor.RED}The 'export' subcommand can only be run by a player.")
+            return
         }
 
         if (!sender.hasPermission("chestexporter.use")) {
             sender.sendMessage("${ChatColor.RED}You do not have permission to use this command.")
-            return true
+            return
         }
 
         val block = sender.getTargetBlockExact(10)
 
         if (block == null || block.state !is Container) {
             sender.sendMessage("${ChatColor.RED}You must be looking at a container.")
-            return true
+            return
         }
 
         val containerState = block.state as Container
@@ -54,7 +89,6 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
             val leftChest = inventory.leftSide.holder as Chest
             val rightChest = inventory.rightSide.holder as Chest
 
-            // Pass the specific inventory half to the generator
             val leftResult = commandGenerator.generateContainerCommand(leftChest, inventory.leftSide)
             val rightResult = commandGenerator.generateContainerCommand(rightChest, inventory.rightSide)
 
@@ -69,13 +103,22 @@ class ChestExporterCommand(private val configManager: ConfigManager) : CommandEx
             reportResults(sender, combinedResult)
 
         } else {
-            // For single containers, the container's inventory is correct
             val result = commandGenerator.generateContainerCommand(containerState, inventory)
             sendCopyableMessage(sender, result.command)
             reportResults(sender, result)
         }
+    }
 
-        return true
+    /**
+     * Handles the "reload" subcommand.
+     */
+    private fun handleReload(sender: CommandSender) {
+        if (!sender.hasPermission("chestexporter.reload")) {
+            sender.sendMessage("${ChatColor.RED}You do not have permission to use this command.")
+            return
+        }
+        configManager.reload()
+        sender.sendMessage("${ChatColor.GREEN}ChestExporter configuration reloaded.")
     }
 
     /**
